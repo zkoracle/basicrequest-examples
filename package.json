@@ -37,5 +37,9 @@
   },
   "peerDependencies": {
     "o1js": "0.16.*"
+  },
+  "dependencies": {
+    "@types/node": "^20.11.20",
+    "@zkoracle/opennautilus-contracts": "^0.5.4"
   }
 }
