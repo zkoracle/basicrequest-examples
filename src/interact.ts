@@ -1,84 +1,171 @@
 import fs from 'fs/promises';
-import { Toolkit, OracleContract } from "@zkoracle/opennautilus-contracts"
+import {
+  Toolkit,
+  OracleContract,
+  buildBasicRequestClient,
+  buildOracleRequestTx,
+  OracleRequest,
+} from '@zkoracle/opennautilus-contracts';
 
-import { Mina, PrivateKey, Signature } from 'o1js';
-// import { OracleContract } from '.js';
+import { JSONPath } from 'jsonpath-plus';
+
+import {
+  Encoding,
+  Field,
+  Lightnet,
+  Mina,
+  PrivateKey,
+  Signature,
+  UInt32,
+  fetchAccount,
+} from 'o1js';
+
+const useCustomLocalNetwork = true;
+const activeConfig = {
+  network: {
+    mina: 'http://localhost:8080/graphql',
+    archive: 'http://localhost:8282',
+    lightnetAccountManager: 'http://localhost:8181',
+  },
+  fee: Number('0.1') * 1e9, // in nanomina (1 billion = 1.0 mina)
+};
 
 // Network configuration
-let config = new Map([
-  [
-    "lightnet", {
-      network: {
-        mina: 'http://localhost:8080/graphql',
-        archive: 'http://localhost:8282',
-        lightnetAccountManager: 'http://localhost:8181'
-      },
-      fee: Number("0.1") * 1e9 // in nanomina (1 billion = 1.0 mina)
-    }
-  ],
-  [
-    "berkeley", {
-      network: {
-        mina: 'https://proxy.berkeley.minaexplorer.com/graphql',
-        archive: 'https://api.minascan.io/archive/berkeley/v1/graphql/',
-        // lightnetAccountManager: 'http://localhost:8181'
-      },
-      fee: Number("0.1") * 1e9 // in nanomina (1 billion = 1.0 mina)
-    }
-  ],
-  [
-    "testworld", {
-      network: {
-        mina: 'https://proxy.testworld.minaexplorer.com/graphql',
-        archive: 'https://api.minascan.io/archive/testworld/v1/graphql/',
-        // lightnetAccountManager: 'http://localhost:8181'
-      },
-      fee: Number("0.1") * 1e9 // in nanomina (1 billion = 1.0 mina)
-    }
-  ]
-  
-]);
-
-
-const activeConfig = config.get(process.argv[2]) ;
-
-if (activeConfig === undefined) {
-  // console.log(commandLineUsage(sections));
-  process.exit(1);
-}
-
 const network = Mina.Network(activeConfig.network);
-Mina.setActiveInstance(network); 
+Mina.setActiveInstance(network);
 
-let feePayerBase58 = await Toolkit.initialFeePayer(fs, process.argv[2]);
-
-const feePayerPrivateKey = PrivateKey.fromBase58(feePayerBase58.privateKey);
+// Fee payer setup
+const feePayerPrivateKey = useCustomLocalNetwork
+  ? (await Lightnet.acquireKeyPair()).privateKey
+  : PrivateKey.random();
 const feePayerAccount = feePayerPrivateKey.toPublicKey();
-console.log('Load feePayerPrivateKey ...');
+if (!useCustomLocalNetwork) {
+  console.log(`Funding the fee payer account.`);
+  await Mina.faucet(feePayerAccount);
+}
+console.log(`Fetching the fee payer account information.`);
+const accountDetails = (await fetchAccount({ publicKey: feePayerAccount }))
+  .account;
+console.log(
+  `Using the fee payer account ${feePayerAccount.toBase58()} with nonce: ${
+    accountDetails?.nonce
+  } and balance: ${accountDetails?.balance}.`
+);
+console.log('');
 
-const zkAppClientKeysBase58 = await Toolkit.initialZkAppKey(fs, 'keys/basicRequestClient-zkApp.key');
+const zkAppClientKeysBase58 = await Toolkit.initialZkAppKey(
+  fs,
+  'keys/basicRequestClient-zkApp.key'
+);
 console.log('Load basicRequestClient zkAppPrivateKey ...');
-const zkAppClientPrivateKey = PrivateKey.fromBase58(zkAppClientKeysBase58.privateKey);
+const zkAppClientPrivateKey = PrivateKey.fromBase58(
+  zkAppClientKeysBase58.privateKey
+);
 const zkAppClientPublicKey = zkAppClientPrivateKey.toPublicKey();
 
-const zkAppOracleKeysBase58 = await Toolkit.initialZkAppKey(fs, 'keys/basicRequestOracle-zkApp.key');
+const zkAppOracleKeysBase58 = await Toolkit.initialZkAppKey(
+  fs,
+  'keys/basicRequestOracle-zkApp.key'
+);
 console.log('Load basicRequestOracle zkAppPrivateKey ...');
-const zkAppOraclePrivateKey = PrivateKey.fromBase58(zkAppOracleKeysBase58.privateKey);
+const zkAppOraclePrivateKey = PrivateKey.fromBase58(
+  zkAppOracleKeysBase58.privateKey
+);
 const zkAppOraclePublicKey = zkAppOraclePrivateKey.toPublicKey();
 
-console.log('Build the contract ... (OracleContract)');
-const zkAppOracle = new OracleContract(zkAppOraclePublicKey);  
+// ------
 
+console.log('Build the contract ... (OracleContract)');
 await OracleContract.compile();
 
-if(process.argv[3] === "deploy")
-{
-  try {
-    await Toolkit.deploy(activeConfig, feePayerPrivateKey, 
-      zkAppOraclePrivateKey, zkAppOracle, "Deploy zkAppOracle");
+const zkOracle = new OracleContract(zkAppOraclePublicKey);
 
+console.log('Build the contract ... (BasicRequestClient)');
+const zkBasicRequestClient = await buildBasicRequestClient(
+  zkAppClientPublicKey,
+  zkAppOraclePublicKey
+);
+
+if (process.argv[3] === 'deploy:oracle') {
+  try {
+    await Toolkit.deploy(
+      activeConfig,
+      feePayerPrivateKey,
+      zkAppOraclePrivateKey,
+      zkOracle,
+      'Deploy zkOracle'
+    );
   } catch (e) {
     console.log(e);
   }
+}
+if (process.argv[3] === 'deploy:client:basicreq') {
+  try {
+    await Toolkit.deploy(
+      activeConfig,
+      feePayerPrivateKey,
+      zkAppClientPrivateKey,
+      zkBasicRequestClient,
+      'Deploy zkBasicRequestClient'
+    );
+  } catch (e) {
+    console.log(e);
+  }
+}
+if (process.argv[3] === 'operator:demo') {
+  try {
+    const events = await zkOracle.fetchEvents(UInt32.from(0));
 
-} 
+    interface OracleData {
+      sender: string;
+      req0: string;
+      req1: string;
+      req2: string;
+      req3: string;
+    }
+
+    // Reparse from jsonStringify (event.data)
+    const r: OracleData = JSON.parse(JSON.stringify(events[1].event.data));
+
+    const onOracleReq = [
+      Field.fromJSON(r.req0),
+      Field.fromJSON(r.req1),
+      Field.fromJSON(r.req2),
+      Field.fromJSON(r.req3),
+    ];
+
+    const onOracleDataBytes = Encoding.bytesFromFields(onOracleReq);
+    const req2 = OracleRequest.fromBinary(onOracleDataBytes);
+
+    const response = await fetch(req2.url);
+    const data = await response.json();
+    const result = JSONPath({ path: req2.path, json: data });
+
+    console.log(`${JSON.stringify(events)} \r\n >> ${JSON.stringify(req2)} = ${result}`);
+  } catch (e) {
+    console.log(e);
+  }
+}
+if (process.argv[3] === 'basicreq:demo') {
+  try {
+    // BasicRequest from Client to Oracle 'OracleRequest'
+    let req1 = new OracleRequest({
+      protocol: 'http',
+      method: 'get',
+      url: 'https://min-api.cryptocompare.com/data/pricemultifull?fsyms=MINA&tsyms=USD',
+      path: 'RAW.MINA.USD.PRICE',
+    });
+
+    let tx = await buildOracleRequestTx(
+      { sender: feePayerAccount, fee: activeConfig.fee },
+      zkBasicRequestClient,
+      req1
+    );
+
+    await tx.prove();
+    tx.sign([feePayerPrivateKey, zkAppClientPrivateKey]);
+    await tx.send();
+  } catch (e) {
+    console.log(e);
+  }
+}
