@@ -1,8 +1,8 @@
 {
-  "name": "package-name",
+  "name": "@zkoracle/basicrequest-examples",
   "version": "0.1.0",
   "description": "",
-  "author": "",
+  "author": "ubinix-warun",
   "license": "Apache-2.0",
   "keywords": [
     "mina-zkapp",
@@ -15,6 +15,7 @@
   "types": "build/src/index.d.ts",
   "scripts": {
     "distclean": "rm -R node_modules build pnpm-lock.yaml ; pnpm install",
+    "distclean-pnpm2npm": "rm -R node_modules build pnpm-lock.yaml ; npm install",
     "build": "tsc",
     "buildw": "tsc --watch",
     "lightnet:up": "zk lightnet start -b berkeley -m single-node",
@@ -24,7 +25,7 @@
     "lightnet:deploy:client:basicreq": "pnpm run build && node build/src/interact.js lightnet deploy:client:basicreq",
     "lightnet:basicreq:demo": "pnpm run build && node build/src/interact.js lightnet basicreq:demo",
     "lightnet:operator:demo": "pnpm run build && node build/src/interact.js lightnet operator:demo",
-     "coverage": "node --experimental-vm-modules nzode_modules/jest/bin/jest.js --coverage",
+    "coverage": "node --experimental-vm-modules nzode_modules/jest/bin/jest.js --coverage",
     "format": "prettier --write --ignore-unknown **/*",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "testw": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
@@ -49,7 +50,8 @@
   "dependencies": {
     "@bufbuild/protobuf": "^1.7.2",
     "@types/node": "^20.11.20",
-    "@zkoracle/opennautilus-contracts": "^0.6.4",
+    "@zkoracle/opennautilus-contracts": "^0.6.8",
+    "@zkoracle/utils": "^0.0.2",
     "jsonpath-plus": "^8.0.0"
   }
 }

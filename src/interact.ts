@@ -1,11 +1,13 @@
 import fs from 'fs/promises';
 import {
-  Toolkit,
   OracleContract,
-  buildBasicRequestClient,
+  // buildBasicRequestClient,
   buildOracleRequestTx,
-  OracleRequest,
+  OracleRequest, BasicRequestClient, SErc677Contract,
 } from '@zkoracle/opennautilus-contracts';
+import {
+  Toolkit
+} from  '@zkoracle/utils'
 
 import { JSONPath } from 'jsonpath-plus';
 
@@ -75,16 +77,23 @@ const zkAppOraclePublicKey = zkAppOraclePrivateKey.toPublicKey();
 
 // ------
 
+console.log('Build the contract ... (SErc677Contract)');
+await SErc677Contract.compile();
+
 console.log('Build the contract ... (OracleContract)');
 await OracleContract.compile();
 
 const zkOracle = new OracleContract(zkAppOraclePublicKey);
 
 console.log('Build the contract ... (BasicRequestClient)');
-const zkBasicRequestClient = await buildBasicRequestClient(
-  zkAppClientPublicKey,
-  zkAppOraclePublicKey
-);
+await BasicRequestClient.compile();
+
+const zkBasicRequestClient = new BasicRequestClient(zkAppClientPublicKey);
+
+// const zkBasicRequestClient = await buildBasicRequestClient(
+//   zkAppClientPublicKey,
+//   zkAppOraclePublicKey
+// );
 
 if (process.argv[3] === 'deploy:oracle') {
   try {
