@@ -78,6 +78,9 @@ const zkAppOraclePublicKey = zkAppOraclePrivateKey.toPublicKey();
 // ------
 
 console.log('Build the contract ... (SErc677Contract)');
+SErc677Contract.staticSymbol = "PRC"
+SErc677Contract.staticName = "PRICE"
+SErc677Contract.staticDecimals = 9
 await SErc677Contract.compile();
 
 console.log('Build the contract ... (OracleContract)');
