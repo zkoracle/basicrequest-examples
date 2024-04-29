@@ -81,7 +81,8 @@ export default function Home() {
           </div>
 
           <div className={styles.start}>
-            <table style={{ border: '1px solid black', backgroundColor: 'white', width: '100%', tableLayout: 'fixed'}}>
+
+            <table style={{ border: '1px solid black', backgroundColor: 'white', width: '100%', tableLayout: 'fixed' }}>
               <thead>
               <tr>
                 <th style={{ border: '1px solid black', padding: '10px' }}>Network</th>
@@ -101,6 +102,13 @@ export default function Home() {
               ))}
               </tbody>
             </table>
+
+
+            <p className={styles.tagline}>
+
+              <code className={styles.code}> opennautilus contract</code>
+            </p>
+            <br /><br /><br />
           </div>
 
           {/*<p className={styles.start}>*/}
