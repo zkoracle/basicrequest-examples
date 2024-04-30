@@ -3,7 +3,8 @@ import {
   OracleContract,
   // buildBasicRequestClient,
   buildOracleRequestTx,
-  OracleRequest, BasicRequestClient, SErc677Contract,
+  buildTransferAndCallTx,
+  OracleRequest, BasicRequestClient, SErc677Contract, IOracleData,
 } from '@zkoracle/opennautilus-contracts';
 import {
   Toolkit
@@ -19,7 +20,7 @@ import {
   PrivateKey,
   Signature,
   UInt32,
-  fetchAccount,
+  fetchAccount, TokenId, UInt64, AccountUpdate,
 } from 'o1js';
 
 const useCustomLocalNetwork = true;
@@ -83,6 +84,22 @@ SErc677Contract.staticName = "PRICE"
 SErc677Contract.staticDecimals = 9
 await SErc677Contract.compile();
 
+const zkErc677KeysBase58 = await Toolkit.initialZkAppKey(
+  fs,
+  'keys/erc677Token-zkApp.key'
+);
+console.log('Load Erc677 Token zkAppPrivateKey ...');
+const zkErc677PrivateKey = PrivateKey.fromBase58(
+  zkErc677KeysBase58.privateKey
+);
+const zkErc677PublicKey = zkErc677PrivateKey.toPublicKey();
+
+const serc677TokenPrivateKey = zkErc677PrivateKey;
+const serc677TokenAddress = serc677TokenPrivateKey.toPublicKey();
+
+const zkAppSErc677 = new SErc677Contract(zkErc677PublicKey);
+const tokenSErc677Id = TokenId.derive(zkErc677PublicKey);
+
 console.log('Build the contract ... (OracleContract)');
 await OracleContract.compile();
 
@@ -98,62 +115,138 @@ const zkBasicRequestClient = new BasicRequestClient(zkAppClientPublicKey);
 //   zkAppOraclePublicKey
 // );
 
-if (process.argv[3] === 'deploy:oracle') {
+if (process.argv[3] === 'setup:basicrequest') {
   try {
-    await Toolkit.deploy(
-      activeConfig,
-      feePayerPrivateKey,
-      zkAppOraclePrivateKey,
-      zkOracle,
-      'Deploy zkOracle'
+
+    // await Toolkit.deploy(
+    //   activeConfig,
+    //   feePayerPrivateKey,
+    //   serc677TokenPrivateKey,
+    //   zkAppSErc677,
+    //   'Deploy zkErc677Token'
+    // );
+    //
+    // await Toolkit.deploy(
+    //   activeConfig,
+    //   feePayerPrivateKey,
+    //   zkAppOraclePrivateKey,
+    //   zkOracle,
+    //   'Deploy zkOracle'
+    // );
+    //
+    // await Toolkit.deploy(
+    //   activeConfig,
+    //   feePayerPrivateKey,
+    //   zkAppClientPrivateKey,
+    //   zkBasicRequestClient,
+    //   'Deploy zkBasicReqClient'
+    // );
+    //
+    // console.log("======== SETUP ========");
+    //
+    // // Set OracleContract on Client
+    // const txnSetup = await Mina.transaction({ sender: feePayerAccount, fee: activeConfig.fee }, async () => {
+    //   await zkBasicRequestClient.setErc677Token(serc677TokenAddress);
+    //   await zkBasicRequestClient.setOracleContract(zkAppOraclePublicKey);
+    // });
+    //
+    // await txnSetup.prove();
+    // txnSetup.sign([feePayerPrivateKey, zkAppClientPrivateKey]);
+    // await txnSetup.send();
+
+    await fetchAccount({ publicKey: zkAppClientPublicKey });
+
+    const tokenAddr = zkBasicRequestClient.tokenAddress.get();
+    const oracleAddr = zkBasicRequestClient.oracleAddress.get();
+
+    console.log(`tokenAddr: ${JSON.stringify(tokenAddr)}`);
+    console.log(`oracleAddr: ${JSON.stringify(oracleAddr)}`);
+
+    // Mint
+    const txnMint = await Mina.transaction({ sender: feePayerAccount, fee: activeConfig.fee }, async() => {
+      // AccountUpdate.fundNewAccount(feePayerAccount);
+      await zkAppSErc677.mint(feePayerAccount, UInt64.from(500_000));
+    });
+
+    await txnMint.prove();
+    txnMint.sign([feePayerPrivateKey, serc677TokenPrivateKey, zkAppOraclePrivateKey]);
+    await txnMint.send();
+
+    await fetchAccount({ publicKey: zkErc677PublicKey });
+
+    console.log("--------------------------");
+    console.log(`Balance= ${JSON.stringify(await zkAppSErc677.balanceOf(feePayerAccount))}`);
+
+    // BasicRequest from Client to Oracle 'OracleRequest'
+    let req1 = new OracleRequest({
+      protocol: 'http',
+      method: 'get',
+      url: 'https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC&tsyms=USD',
+      path: 'RAW.BTC.USD.PRICE',
+    });
+
+    let tx = await buildTransferAndCallTx(
+      { sender: feePayerAccount, fee: Number('0.2') * 1e9 }, feePayerAccount,
+      zkBasicRequestClient,
+      req1
     );
+
+    await tx.prove();
+    tx.sign([feePayerPrivateKey, zkAppClientPrivateKey]);
+    await tx.send();
+
+    await Toolkit.displayEvents(zkOracle, UInt32.from(0));
+
+
   } catch (e) {
     console.log(e);
   }
 }
-if (process.argv[3] === 'deploy:client:basicreq') {
-  try {
-    await Toolkit.deploy(
-      activeConfig,
-      feePayerPrivateKey,
-      zkAppClientPrivateKey,
-      zkBasicRequestClient,
-      'Deploy zkBasicRequestClient'
-    );
-  } catch (e) {
-    console.log(e);
-  }
+if (process.argv[3] === 'display:events') {
+
+  await Toolkit.displayEvents(zkOracle, UInt32.from(0));
+
+  const events = await zkOracle.fetchEvents(UInt32.from(0));
+  console.log(events);
+  const s = await zkAppSErc677.fetchEvents(UInt32.from(0));
+  console.log(s);
+
 }
 if (process.argv[3] === 'operator:demo') {
   try {
     const events = await zkOracle.fetchEvents(UInt32.from(0));
 
-    interface OracleData {
-      sender: string;
-      req0: string;
-      req1: string;
-      req2: string;
-      req3: string;
-    }
+    console.log(events);
 
-    // Reparse from jsonStringify (event.data)
-    const r: OracleData = JSON.parse(JSON.stringify(events[1].event.data));
+    // const eventsOracle = await zkOracle.fetchEvents(UInt32.from(0));
 
-    const onOracleReq = [
-      Field.fromJSON(r.req0),
-      Field.fromJSON(r.req1),
-      Field.fromJSON(r.req2),
-      Field.fromJSON(r.req3),
-    ];
-
-    const onOracleDataBytes = Encoding.bytesFromFields(onOracleReq);
-    const req2 = OracleRequest.fromBinary(onOracleDataBytes);
-
-    const response = await fetch(req2.url);
-    const data = await response.json();
-    const result = JSONPath({ path: req2.path, json: data });
-
-    console.log(`${JSON.stringify(events)} \r\n >> ${JSON.stringify(req2)} = ${result}`);
+    //
+    // // interface IOracleData {
+    // //   sender: string;
+    // //   req0: string;
+    // //   req1: string;
+    // //   req2: string;
+    // //   req3: string;
+    // // }
+    //
+    // // Reparse from jsonStringify (event.data)
+    // const r: IOracleData = JSON.parse(JSON.stringify(events[1].event.data));
+    //
+    // const onOracleReq = [
+    //   Field.fromJSON(r.req0),
+    //   Field.fromJSON(r.req1),
+    //   Field.fromJSON(r.req2),
+    //   Field.fromJSON(r.req3),
+    // ];
+    //
+    // const onOracleDataBytes = Encoding.bytesFromFields(onOracleReq);
+    // const req2 = OracleRequest.fromBinary(onOracleDataBytes);
+    //
+    // const response = await fetch(req2.url);
+    // const data = await response.json();
+    // const result = JSONPath({ path: req2.path, json: data });
+    //
+    // console.log(`${JSON.stringify(events)} \r\n >> ${JSON.stringify(req2)} = ${result}`);
   } catch (e) {
     console.log(e);
   }

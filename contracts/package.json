@@ -24,7 +24,9 @@
     "lightnet:up": "zk lightnet start -b berkeley -m single-node",
     "lightnet:down": "zk lightnet stop && rm keys/lightnet-acquire*",
     "lightnet:status": "zk lightnet status",
-    "lightnet:deploy:oracle": "pnpm run build && node build/src/interact.js lightnet deploy:oracle"
+    "lightnet:setup:basicrequest": "pnpm run build && node build/src/interact.js lightnet setup:basicrequest",
+    "lightnet:operator:demo": "pnpm run build && node build/src/interact.js lightnet operator:demo",
+    "lightnet:display:events": "pnpm run build && node build/src/interact.js lightnet display:events"
   },
   "devDependencies": {
     "@babel/preset-env": "^7.16.4",
@@ -44,7 +46,7 @@
   },
   "dependencies": {
     "@bufbuild/protobuf": "^1.9.0",
-    "@zkoracle/opennautilus-contracts": "0.7.2",
+    "@zkoracle/opennautilus-contracts": "0.7.3",
     "@zkoracle/utils": "0.1.12",
     "jsonpath-plus": "^8.1.0"
   }
